@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>廃病棟からの脱出 - 空間探索版</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  :root{
+    --bg:#05060a;
+    --panel:#0c0e14;
+    --panel2:#10131b;
+    --line:#1d2430;
+    --text:#d8d6cf;
+    --dim:#707786;
+    --red:#bf3a34;
+    --red2:#7d1d1d;
+    --glow:rgba(191,58,52,.35);
+  }
+  html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:'Noto Sans JP',sans-serif;color:var(--text)}
+  body{touch-action:manipulation}
+  #root{position:relative;width:100%;height:100%;max-width:430px;margin:0 auto;background:linear-gradient(180deg,#010102,#080912 44%,#05060b 100%);overflow:hidden}
+  .screen{position:absolute;inset:0;display:none;flex-direction:column}
+  .screen.active{display:flex;animation:fade .35s ease}
+  @keyframes fade{from{opacity:0;transform:scale(1.01)}to{opacity:1;transform:none}}
+
+  #scanlines,#vignette,#fx,#noise{position:absolute;inset:0;pointer-events:none}
+  #scanlines{z-index:60;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.08) 3px,rgba(0,0,0,.08) 4px)}
+  #vignette{z-index:61;background:radial-gradient(ellipse at center,transparent 38%,rgba(0,0,0,.68) 100%)}
+  #fx{z-index:64;transition:background .2s ease}
+  #noise{z-index:63;opacity:0}
+
+  #screen-title{align-items:center;justify-content:center;text-align:center;padding:28px;background:
+    radial-gradient(circle at 50% 30%,rgba(130,10,10,.18),transparent 35%),
+    linear-gradient(180deg,#000,#07070d 55%,#020204)}
+  .title-wrap{position:relative;z-index:2;width:100%;padding:0 28px}
+  .title-kicker{font-size:10px;letter-spacing:7px;color:#88332d;margin-bottom:18px}
+  .title-main{font-size:46px;line-height:1.1;font-weight:700;letter-spacing:4px;text-shadow:0 0 22px rgba(191,58,52,.3)}
+  .title-main .red{color:var(--red)}
+  .title-sub{margin-top:10px;color:#686e78;font-size:12px;letter-spacing:3px}
+  .title-line{width:1px;height:60px;background:linear-gradient(180deg,transparent,#7d1d1d,transparent);margin:20px auto}
+  .title-note{font-size:10px;line-height:2;color:#5f6672}
+  .main-btn,.sub-btn,.small-btn{border:none;background:none;color:var(--text);font-family:inherit;cursor:pointer}
+  .main-btn{display:block;width:100%;margin:26px auto 10px;padding:16px 18px;border:1px solid rgba(191,58,52,.35);background:rgba(191,58,52,.08);font-size:14px;letter-spacing:4px}
+  .sub-btn{display:block;width:100%;padding:13px 18px;border:1px solid #222a36;color:#8a92a1;font-size:11px;letter-spacing:3px}
+
+  .blood-top{position:absolute;inset:0 0 auto 0;height:96px;overflow:hidden}
+  .drip{position:absolute;top:0;width:2px;background:linear-gradient(180deg,#7d1d1d,transparent);border-radius:0 0 2px 2px;animation:drip var(--d) ease-in var(--delay) infinite}
+  @keyframes drip{0%{height:0;opacity:.9}65%{height:var(--h);opacity:.95}100%{height:var(--h);opacity:0;transform:translateY(8px)}}
+
+  #screen-opening{justify-content:center;padding:32px;background:#000}
+  .opening-box{padding:0 26px}
+  .opening-line{font-size:14px;line-height:2.3;color:#7d8592;opacity:0;transform:translateY(8px);transition:all .35s ease}
+  .opening-line.show{opacity:1;transform:none}
+  .opening-skip{position:absolute;right:22px;bottom:42px;font-size:10px;color:#505865;letter-spacing:2px;animation:blink 1.4s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.28}}
+
+  #screen-game{background:transparent}
+  .status-bar{position:relative;z-index:5;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(4,6,9,.72);backdrop-filter:blur(6px);border-bottom:1px solid rgba(255,255,255,.05)}
+  .scene-name{font-size:10px;letter-spacing:4px;color:#7f2b2b}
+  .scene-meta{display:flex;align-items:center;gap:8px}
+  .progress{display:flex;gap:5px}
+  .progress span{width:5px;height:5px;border-radius:50%;background:#1c212b}
+  .progress span.on{background:var(--red);box-shadow:0 0 7px rgba(191,58,52,.7)}
+  .mini-chip{font-size:9px;color:#7f8794;letter-spacing:2px}
+
+  .room-wrap{position:relative;flex:1;min-height:0;overflow:hidden}
+  .room-svg{position:absolute;inset:0;width:100%;height:100%}
+  .room-bg{position:absolute;inset:0}
+  .mist{position:absolute;left:0;right:0;bottom:0;height:38%;background:linear-gradient(0deg,rgba(25,14,28,.42),transparent);pointer-events:none;z-index:2}
+  .room-hotspots,.inspect-hotspots{position:absolute;inset:0;z-index:8}
+  .spot{position:absolute;background:transparent;border:none;cursor:pointer}
+  .spot.hints-on{outline:1px solid rgba(191,58,52,.18);box-shadow:inset 0 0 0 1px rgba(191,58,52,.1)}
+  .spot.hints-on::after{content:'';position:absolute;inset:auto auto 6px 6px;width:8px;height:8px;border-radius:50%;background:rgba(191,58,52,.55);box-shadow:0 0 10px rgba(191,58,52,.5)}
+
+  .msg-box{position:relative;z-index:5;min-height:90px;padding:12px 16px 18px;background:rgba(8,10,15,.96);border-top:1px solid rgba(255,255,255,.06);backdrop-filter:blur(10px)}
+  .msg-box.hidden{min-height:50px;padding:9px 16px}
+  .msg-head{font-size:9px;letter-spacing:3px;color:#7c2a29;margin-bottom:6px}
+  .msg-body{font-size:13px;line-height:1.9;color:var(--text)}
+  .msg-next{position:absolute;right:12px;bottom:7px;font-size:10px;color:#6f7786;display:none}
+  .msg-box.ready .msg-next{display:block}
+  .msg-cursor{display:inline-block;width:2px;height:12px;background:#8d94a0;margin-left:2px;vertical-align:-1px;animation:blink 1s step-end infinite}
+
+  .nav{position:relative;z-index:5;display:flex;background:rgba(8,11,16,.96);border-top:1px solid rgba(255,255,255,.05);backdrop-filter:blur(10px)}
+  .nav button{flex:1;padding:10px 4px 11px;border:none;background:none;color:#707887;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:8px;letter-spacing:1px;cursor:pointer;border-right:1px solid rgba(255,255,255,.04)}
+  .nav button:last-child{border-right:none}
+  .nav .ico{font-size:18px}
+  .nav button.active,.nav button:active{background:rgba(191,58,52,.06);color:var(--text)}
+
+  .panel{position:absolute;left:0;right:0;bottom:0;z-index:20;transform:translateY(101%);transition:transform .28s ease;background:rgba(9,11,16,.98);border-top:1px solid rgba(255,255,255,.07);backdrop-filter:blur(12px);max-height:62%;display:flex;flex-direction:column}
+  .panel.open{transform:translateY(0)}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border-bottom:1px solid rgba(255,255,255,.05)}
+  .panel-title{font-size:10px;letter-spacing:4px;color:#7c8490}
+  .panel-close{width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:#7c8490;cursor:pointer}
+
+  .inv-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px;overflow:auto}
+  .inv-cell{aspect-ratio:1;background:#080a10;border:1px solid #1c2430;border-radius:4px;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:4px;position:relative}
+  .inv-cell.has{cursor:pointer}
+  .inv-cell.sel{border-color:rgba(191,58,52,.6);box-shadow:0 0 0 1px rgba(191,58,52,.2) inset,0 0 12px rgba(191,58,52,.1)}
+  .inv-icon{font-size:24px}
+  .inv-name{font-size:8px;color:#7a8390;text-align:center;line-height:1.3;margin-top:4px}
+  .inv-cell.sel .inv-name{color:#d48e8e}
+  .inv-desc{padding:10px 14px 14px;border-top:1px solid rgba(255,255,255,.05);font-size:11px;line-height:1.7;color:#7a8390;min-height:48px}
+
+  .save-body{padding:14px;display:flex;flex-direction:column;gap:8px}
+  .save-btn{padding:14px;border:1px solid #1d2531;background:#080a10;color:var(--text);font-family:inherit;cursor:pointer;text-align:center;font-size:13px;letter-spacing:2px}
+  .save-info{font-size:11px;color:#7a8390;line-height:1.7;margin-bottom:4px}
+
+  .modal-wrap{position:absolute;inset:0;z-index:30;background:rgba(0,0,0,.84);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:20px}
+  .modal-wrap.open{display:flex}
+  .modal{width:100%;max-width:340px;background:#0d1118;border:1px solid rgba(255,255,255,.06)}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border-bottom:1px solid rgba(255,255,255,.05);color:#c2ccd9;font-size:11px;letter-spacing:3px}
+  .modal-body{padding:15px}
+  .map-item{display:flex;align-items:center;gap:12px;padding:14px 12px;border:1px solid #1a2230;background:#080a10;color:var(--text);margin-bottom:7px;cursor:pointer}
+  .map-item.locked{color:#454b57;cursor:default}
+  .map-item.current{border-color:rgba(191,58,52,.45);background:rgba(191,58,52,.06)}
+  .map-badge{margin-left:auto;font-size:9px;color:#7a8390}
+
+  .inspect{position:absolute;inset:0;z-index:25;display:none;background:rgba(0,0,0,.95)}
+  .inspect.open{display:block;animation:fade .22s ease}
+  .inspect-head{position:absolute;left:0;right:0;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:linear-gradient(180deg,rgba(0,0,0,.88),rgba(0,0,0,.35),transparent)}
+  .inspect-title{font-size:11px;letter-spacing:3px;color:#cfd5de}
+  .inspect-close{width:42px;height:42px;border:1px solid rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;background:rgba(10,13,18,.88);color:#cfd5de;cursor:pointer;position:relative;z-index:31;touch-action:manipulation;font-size:22px}
+  .inspect-stage{position:absolute;inset:0;z-index:1}
+  .inspect-art{position:absolute;inset:0}
+  .inspect-stage svg{width:100%;height:100%}
+  .inspect-hint{position:absolute;left:12px;right:12px;bottom:12px;z-index:20;padding:10px 12px;background:rgba(7,9,14,.82);border:1px solid rgba(255,255,255,.06);font-size:11px;line-height:1.7;color:#98a0ae;min-height:42px}
+  .inspect-spot{position:absolute;background:transparent;border:none;cursor:pointer;z-index:10}
+  .inspect-spot.hints-on{outline:1px solid rgba(191,58,52,.25);box-shadow:inset 0 0 0 1px rgba(191,58,52,.15)}
+
+  .toast{position:absolute;left:50%;bottom:80px;z-index:70;transform:translate(-50%,12px);padding:9px 18px;background:rgba(8,11,16,.95);border:1px solid rgba(255,255,255,.07);font-size:11px;color:#c8d0db;opacity:0;transition:all .25s ease;white-space:nowrap;max-width:calc(100% - 40px);overflow:hidden;text-overflow:ellipsis}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
+  #screen-ending,#screen-gameover{justify-content:center;align-items:center;text-align:center;padding:34px;background:#000}
+  .end-kicker{font-size:10px;letter-spacing:6px;color:#747c89}
+  .end-title{font-size:30px;font-weight:700;letter-spacing:5px;margin:10px 0 14px}
+  .end-title.bad{color:var(--red);text-shadow:0 0 18px rgba(191,58,52,.4)}
+  .end-body{font-size:12px;line-height:2.2;color:#7c8593;max-width:290px}
+  .end-btn{margin-top:22px;padding:14px 34px;border:1px solid #212a37;color:#cfd5de;letter-spacing:3px;font-size:11px}
+
+  .pulse{animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(191,58,52,.34)}70%{box-shadow:0 0 0 16px rgba(191,58,52,0)}}
+
+  @keyframes rootshake{0%,100%{transform:translate(0,0)}20%{transform:translate(-7px,2px)}40%{transform:translate(7px,-2px)}60%{transform:translate(-4px,1px)}80%{transform:translate(4px,-1px)}}
+
+  .num-wrap{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .num-display{padding:12px;border:1px solid #1f2834;background:#080a10;color:#d7dde6;font-size:22px;text-align:center;letter-spacing:4px;margin-top:6px}
+  .num-btn{padding:14px 0;border:1px solid #1f2834;background:#090b12;color:#d7dde6;font-size:18px;cursor:pointer}
+  .num-btn.wide{grid-column:span 3;font-size:13px;letter-spacing:2px}
+
+  .order-row{display:flex;gap:8px;margin-top:12px}
+  .order-chip{flex:1;padding:14px 8px;border:1px solid #1f2834;background:#090b12;text-align:center;color:#d7dde6;cursor:pointer;font-size:12px;line-height:1.6}
+  .order-chip.marked{border-color:rgba(191,58,52,.45);background:rgba(191,58,52,.08)}
+  .order-state{margin-top:12px;font-size:12px;color:#8d95a2;line-height:1.8}
+</style>
+</head>
+<body>
+<div id="root">
+  <div id="scanlines"></div>
+  <div id="vignette"></div>
+  <div id="fx"></div>
+  <canvas id="noise"></canvas>
+  <div id="toast" class="toast"></div>
+
+  <div id="screen-title" class="screen active">
+    <div class="blood-top" id="bloodTop"></div>
+    <div class="title-wrap">
+      <div class="title-kicker">SPACE EXPLORATION HORROR</div>
+      <div class="title-main">廃<span class="red">病棟</span><br>からの脱出</div>
+      <div class="title-sub">触れて、寄って、調べて、生きて出る。</div>
+      <div class="title-line"></div>
+      <div class="title-note">暗い環境でのプレイ推奨<br>イヤホン・ヘッドホン推奨</div>
+      <button class="main-btn" onclick="Game.startNew()">ゲームを始める</button>
+      <button class="sub-btn" onclick="Game.load()">続きから</button>
+    </div>
+  </div>
+
+  <div id="screen-opening" class="screen" onclick="Game.skipOpening()">
+    <div class="opening-box" id="openingBox"></div>
+    <div class="opening-skip">タップでスキップ</div>
+  </div>
+
+  <div id="screen-game" class="screen">
+    <div class="status-bar">
+      <div class="scene-name" id="sceneName">病室</div>
+      <div class="scene-meta">
+        <div class="mini-chip" id="selMini">未選択</div>
+        <div class="progress" id="progress"></div>
+      </div>
+    </div>
+
+    <div class="room-wrap" id="roomWrap">
+      <svg class="room-svg" id="roomSvg" viewBox="0 0 430 620" preserveAspectRatio="xMidYMid slice"></svg>
+      <div class="room-hotspots" id="roomHotspots"></div>
+      <div class="mist"></div>
+
+      <div id="inspect" class="inspect">
+        <div class="inspect-head">
+          <div class="inspect-title" id="inspectTitle">調査</div>
+          <div class="inspect-close" onclick="UI.closeInspect()">×</div>
+        </div>
+        <div class="inspect-stage">
+          <div class="inspect-art" id="inspectArt"></div>
+          <div class="inspect-hotspots" id="inspectHotspots"></div>
+        </div>
+        <div class="inspect-hint" id="inspectHint">気になる箇所を触って調べる</div>
+      </div>
+    </div>
+
+    <div class="msg-box hidden" id="msgBox" onclick="UI.advanceText()">
+      <div class="msg-head" id="msgHead">観測記録</div>
+      <div class="msg-body" id="msgBody"></div>
+      <div class="msg-next">▼ タップ</div>
+    </div>
+
+    <div class="nav">
+      <button onclick="UI.toggleInventory()"><span class="ico">🎒</span><span>所持品</span></button>
+      <button id="senseBtn" onclick="UI.toggleHints()"><span class="ico">👁️</span><span>感知</span></button>
+      <button onclick="UI.clearSelection()"><span class="ico" id="useIco">👆</span><span id="useLbl">使用なし</span></button>
+      <button onclick="UI.toggleSave()"><span class="ico">💾</span><span>セーブ</span></button>
+      <button onclick="UI.openMap()"><span class="ico">🗺️</span><span>マップ</span></button>
+    </div>
+
+    <div id="inventoryPanel" class="panel">
+      <div class="panel-head"><div class="panel-title">所持品</div><div class="panel-close" onclick="UI.toggleInventory()">×</div></div>
+      <div class="inv-grid" id="invGrid"></div>
+      <div class="inv-desc" id="invDesc">アイテムを選択すると使用状態になります。</div>
+    </div>
+
+    <div id="savePanel" class="panel">
+      <div class="panel-head"><div class="panel-title">セーブ / ロード</div><div class="panel-close" onclick="UI.toggleSave()">×</div></div>
+      <div class="save-body">
+        <div class="save-info" id="saveInfo">セーブデータなし</div>
+        <button class="save-btn" onclick="Game.save()">セーブする</button>
+        <button class="save-btn" onclick="Game.load()">ロードする</button>
+      </div>
+    </div>
+
+    <div id="mapModal" class="modal-wrap" onclick="if(event.target===this)UI.closeMap()">
+      <div class="modal">
+        <div class="modal-head"><span>場所の移動</span><span style="cursor:pointer" onclick="UI.closeMap()">×</span></div>
+        <div class="modal-body" id="mapBody"></div>
+      </div>
+    </div>
+
+    <div id="keypadModal" class="modal-wrap" onclick="if(event.target===this)Puzzles.closeKeypad()">
+      <div class="modal">
+        <div class="modal-head"><span>暗証番号パネル</span><span style="cursor:pointer" onclick="Puzzles.closeKeypad()">×</span></div>
+        <div class="modal-body">
+          <div style="font-size:12px;line-height:1.9;color:#8f97a5">カルテの患者番号を入力する。</div>
+          <div class="num-display" id="numDisplay">----</div>
+          <div class="num-wrap" id="numWrap"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="orderModal" class="modal-wrap" onclick="if(event.target===this)Puzzles.closeOrder()">
+      <div class="modal">
+        <div class="modal-head"><span>封印解除</span><span style="cursor:pointer" onclick="Puzzles.closeOrder()">×</span></div>
+        <div class="modal-body">
+          <div style="font-size:12px;line-height:1.9;color:#8f97a5">刻印された三つの操作を、正しい順で選ぶ。</div>
+          <div class="order-row" id="orderRow"></div>
+          <div class="order-state" id="orderState">選択順：なし</div>
+          <div class="num-wrap" style="margin-top:14px;grid-template-columns:1fr 1fr">
+            <button class="num-btn" onclick="Puzzles.resetOrder()" style="font-size:13px">リセット</button>
+            <button class="num-btn" onclick="Puzzles.confirmOrder()" style="font-size:13px">決定</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="screen-ending" class="screen">
+    <div class="end-kicker" id="endKicker">TRUE END</div>
+    <div class="end-title" id="endTitle">脱出成功</div>
+    <div class="end-body" id="endBody"></div>
+    <button class="main-btn end-btn" onclick="Game.toTitle()">タイトルへ戻る</button>
+  </div>
+
+  <div id="screen-gameover" class="screen">
+    <div class="end-kicker">DEAD END</div>
+    <div class="end-title bad">実験体</div>
+    <div class="end-body">あなたは廃病棟の記録に、新たな番号として書き加えられた。</div>
+    <button class="main-btn end-btn" onclick="Game.toTitle()">タイトルへ戻る</button>
+  </div>
+</div>
+
+<script>
+const ITEM = {
+  bandage:{id:'bandage',name:'包帯',icon:'🩹',desc:'湿った古い包帯。何かに巻くというより、ここで何が起きたかを物語っている。'},
+  memo:{id:'memo',name:'殴り書きメモ',icon:'📝',desc:'「2・7・右・左・右」と書かれている。まだ意味は不明。'},
+  flashlight:{id:'flashlight',name:'懐中電灯',icon:'🔦',desc:'弱いがまだ使える。暗い場所や細い隙間を照らせる。'},
+  wire:{id:'wire',name:'細いワイヤー',icon:'〰️',desc:'狭い隙間や単純な錠前に差し込めそうだ。'},
+  rusty_key:{id:'rusty_key',name:'錆びた鍵',icon:'🗝️',desc:'病室の出口に合いそうな古い鍵。'},
+  chart:{id:'chart',name:'患者カルテ',icon:'📋',desc:'患者番号0319。死亡確認済みという印が押されている。'},
+  clock_memo:{id:'clock_memo',name:'時計の裏メモ',icon:'🕐',desc:'「12時12分で止めた」と走り書きがある。'},
+  vial:{id:'vial',name:'無記名の薬瓶',icon:'🧪',desc:'ラベルのない薬瓶。特定のくぼみに合いそうだ。'},
+  iron_key:{id:'iron_key',name:'鉄製の鍵',icon:'🔑',desc:'重い鉄扉を開くための鍵。地下で使えるはずだ。'},
+};
+
+const SC = {SR:'sickroom', CO:'corridor', NU:'nurse', PH:'pharmacy', BS:'basement'};
+
+let G = freshState();
+function freshState(){
+  return {
+    scene:SC.SR,
+    items:[],
+    flags:{},
+    examined:{},
+    sel:null,
+    hints:false,
+    inspect:null,
+    msgQueue:[],
+    msgIndex:0,
+    typing:false,
+    typingTimer:null,
+    msgCb:null,
+    openingDone:false,
+    keypadInput:'',
+    orderInput:[],
+  };
+}
+
+const Scenes = {
+  sickroom:{
+    name:'病室',
+    access:()=>true,
+    room(){
+      return `
+      <defs>
+        <linearGradient id="srCeil" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#090913"/><stop offset="100%" stop-color="#0e0f18"/></linearGradient>
+        <linearGradient id="srFloor" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10111b"/><stop offset="100%" stop-color="#07080d"/></linearGradient>
+        <pattern id="srTile" width="82" height="82" patternUnits="userSpaceOnUse"><rect width="82" height="82" fill="#10121c"/><rect width="81" height="81" fill="none" stroke="rgba(255,255,255,.02)" stroke-width="1"/></pattern>
+      </defs>
+      <rect width="430" height="82" fill="url(#srCeil)"/>
+      <rect y="82" width="430" height="330" fill="url(#srTile)"/>
+      <rect y="412" width="430" height="208" fill="url(#srFloor)"/>
+      <rect x="26" y="282" width="230" height="126" rx="4" fill="#0f1320" stroke="rgba(255,255,255,.06)" stroke-width="1.2"/>
+      <rect x="38" y="292" width="203" height="58" rx="3" fill="#171c2b"/>
+      <rect x="46" y="300" width="72" height="30" rx="4" fill="#232a39"/>
+      <rect x="293" y="112" width="102" height="152" fill="rgba(70,90,130,.05)" stroke="rgba(255,255,255,.08)" stroke-width="1.4"/>
+      <line x1="344" y1="112" x2="344" y2="264" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+      <line x1="293" y1="188" x2="395" y2="188" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+      <rect x="350" y="112" width="58" height="270" fill="#0d1018" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+      <line x1="379" y1="112" x2="379" y2="382" stroke="rgba(255,255,255,.05)" stroke-width="1"/>
+      ${G.flags.lockerOpened ? `<rect x="350" y="112" width="29" height="270" fill="#0d1018" stroke="rgba(255,255,255,.05)" stroke-width="1"/><polygon points="379,112 418,128 418,365 379,382" fill="#0a0d14" stroke="rgba(255,255,255,.05)" stroke-width="1"/>` : ''}
+      ${G.flags.memoTaken ? '' : `<rect x="20" y="180" width="54" height="72" fill="#1a170e" stroke="rgba(255,255,255,.07)" stroke-width=".7" transform="rotate(-2 47 216)"/>`}
+      ${G.flags.bedTaken ? `<path d="M75 340 Q98 352 122 341" stroke="rgba(120,0,0,.25)" stroke-width="4" fill="none"/>` : ''}
+      <line x1="275" y1="220" x2="275" y2="416" stroke="rgba(255,255,255,.1)" stroke-width="2"/>
+      <rect x="261" y="216" width="28" height="6" rx="3" fill="rgba(255,255,255,.08)"/>
+      <rect x="269" y="224" width="12" height="58" rx="3" fill="rgba(170,190,220,.08)"/>
+      <ellipse cx="332" cy="455" rx="29" ry="10" fill="rgba(96,0,0,.3)"/>
+      <rect x="0" y="0" width="430" height="620" fill="rgba(10,0,20,.06)"/>
+      ${G.flags.windowScare ? `<text x="323" y="170" fill="rgba(255,255,255,.16)" font-size="28">◉</text>` : ''}
+      `;
+    },
+    hotspots:[
+      hs('bed',6,43,58,24,()=>UI.openInspect('bed')),
+      hs('notice',2,27,18,16,()=>UI.openInspect('notice')),
+      hs('window',66,15,26,25,()=>UI.openInspect('window')),
+      hs('locker',79,16,17,44,()=>UI.openInspect('locker')),
+      hs('door',73,66,23,21,()=>UI.openInspect('door')),
+    ],
+    onEnter(){
+      if(!G.flags.srFirst){
+        G.flags.srFirst=true;
+        UI.say(['……暗い。','ここは病院の病室らしい。','扉は閉ざされている。何か手掛かりを探そう。']);
+      }
+    }
+  },
+  corridor:{
+    name:'廊下',
+    access:()=>!!G.flags.srOpen,
+    room(){
+      return `
+      <defs>
+        <linearGradient id="coDepth" x1=".5" y1="0" x2=".5" y2="1"><stop offset="0%" stop-color="#06070b"/><stop offset="100%" stop-color="#0b0d13"/></linearGradient>
+        <radialGradient id="coLight" cx="50%" cy="0%" r="80%"><stop offset="0%" stop-color="rgba(200,220,240,.11)"/><stop offset="100%" stop-color="transparent"/></radialGradient>
+      </defs>
+      <rect width="430" height="620" fill="#05060a"/>
+      <polygon points="154,95 276,95 430,620 0,620" fill="url(#coDepth)"/>
+      <rect width="154" height="620" fill="rgba(12,14,20,.95)"/>
+      <rect x="276" width="154" height="620" fill="rgba(12,14,20,.95)"/>
+      <line x1="0" y1="170" x2="154" y2="200" stroke="rgba(255,255,255,.03)" stroke-width="1"/>
+      <line x1="276" y1="190" x2="430" y2="170" stroke="rgba(255,255,255,.03)" stroke-width="1"/>
+      <rect x="78" y="16" width="274" height="8" rx="4" fill="rgba(180,200,220,.16)"/>
+      <rect x="78" y="16" width="274" height="40" fill="url(#coLight)"/>
+      <rect x="35" y="404" width="46" height="54" rx="2" fill="#0a0d14" stroke="rgba(255,255,255,.06)" stroke-width=".8"/>
+      <circle cx="43" cy="460" r="12" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="2"/>
+      <circle cx="91" cy="460" r="12" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="2"/>
+      <path d="M205 500 Q280 490 380 476" stroke="rgba(100,0,0,.28)" stroke-width="7" fill="none" stroke-linecap="round"/>
+      <rect x="356" y="210" width="50" height="74" fill="#0b0d14" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
+      <circle cx="370" cy="272" r="3" fill="rgba(0,140,60,.42)"/>
+      <circle cx="384" cy="272" r="3" fill="rgba(130,0,0,.42)"/>
+      <rect x="142" y="270" width="145" height="255" fill="rgba(0,0,0,.16)"/>
+      ${G.flags.coShadowSeen ? `<rect x="247" y="175" width="28" height="120" rx="10" fill="rgba(0,0,0,.28)"/><circle cx="261" cy="155" r="14" fill="rgba(0,0,0,.28)"/>` : ''}
+      `;
+    },
+    hotspots:[
+      hs('wheelchair',5,58,24,20,()=>UI.openInspect('wheelchair')),
+      hs('panel',81,32,15,18,()=>UI.openInspect('panel')),
+      hs('blood',49,72,39,9,()=>UI.openInspect('blood')),
+      hs('nurseDoor',33,42,34,36,()=>Game.go(SC.NU)),
+      hs('back',2,78,15,12,()=>Game.go(SC.SR)),
+    ],
+    onEnter(){
+      if(!G.flags.coFirst){
+        G.flags.coFirst=true;
+        UI.say(['廊下に出た。','蛍光灯が断続的に明滅している。','奥にナースステーションが見える。']);
+      }
+    }
+  },
+  nurse:{
+    name:'ナースステーション',
+    access:()=>!!G.flags.srOpen,
+    room(){
+      return `
+      <rect width="430" height="620" fill="#090b12"/>
+      <rect y="90" width="430" height="230" fill="#0b0e16"/>
+      <rect y="338" width="430" height="282" fill="#0d1119"/>
+      <rect y="338" width="430" height="10" fill="rgba(255,255,255,.04)"/>
+      <rect y="90" width="430" height="4" fill="rgba(255,255,255,.03)"/>
+      <rect y="160" width="430" height="3" fill="rgba(255,255,255,.03)"/>
+      <rect y="235" width="430" height="3" fill="rgba(255,255,255,.03)"/>
+      <rect x="26" y="298" width="124" height="38" fill="#151923" transform="rotate(-2 88 317)"/>
+      <rect x="32" y="290" width="119" height="36" fill="#181d27" transform="rotate(1 91 308)"/>
+      <circle cx="344" cy="145" r="42" fill="#0a0d15" stroke="rgba(255,255,255,.08)" stroke-width="1.5"/>
+      <circle cx="344" cy="145" r="36" fill="#090c13" stroke="rgba(255,255,255,.04)" stroke-width="1"/>
+      <line x1="344" y1="145" x2="344" y2="113" stroke="rgba(255,255,255,.25)" stroke-width="2" stroke-linecap="round"/>
+      <line x1="344" y1="145" x2="355" y2="118" stroke="rgba(255,255,255,.16)" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="344" cy="145" r="3" fill="rgba(255,255,255,.24)"/>
+      <rect x="176" y="286" width="88" height="54" rx="4" fill="#0b0e15" stroke="rgba(191,58,52,.28)" stroke-width="1"/>
+      <rect x="186" y="298" width="68" height="16" rx="2" fill="#06080d"/>
+      <circle cx="198" cy="325" r="6" fill="#121722"/>
+      <circle cx="220" cy="325" r="6" fill="#121722"/>
+      <circle cx="242" cy="325" r="6" fill="#121722"/>
+      <rect x="302" y="316" width="42" height="20" rx="3" fill="#10141d"/>
+      ${G.flags.nuSolved ? `<text x="178" y="370" fill="rgba(191,58,52,.65)" font-size="12">UNLOCKED</text>` : ''}
+      `;
+    },
+    hotspots:[
+      hs('charts',4,44,31,16,()=>UI.openInspect('charts')),
+      hs('clock',70,11,20,18,()=>UI.openInspect('clock')),
+      hs('keypad',38,41,27,13,()=>UI.openInspect('keypad')),
+      hs('phDoor',76,54,19,26,()=>UI.openInspect('phDoor')),
+      hs('back',2,78,15,12,()=>Game.go(SC.CO)),
+    ],
+    onEnter(){
+      if(!G.flags.nuFirst){
+        G.flags.nuFirst=true;
+        UI.say(['ナースステーションだ。','カルテと時計……人工的なヒントが多い。']);
+      }
+    }
+  },
+  pharmacy:{
+    name:'薬品庫',
+    access:()=>!!G.flags.nuSolved,
+    room(){
+      return `
+      <defs><radialGradient id="phGlow" cx="50%" cy="75%" r="65%"><stop offset="0%" stop-color="rgba(0,90,40,.08)"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs>
+      <rect width="430" height="620" fill="#06070a"/>
+      <rect y="60" width="430" height="290" fill="#090b11"/>
+      <rect y="60" width="430" height="3" fill="rgba(255,255,255,.04)"/>
+      <rect y="150" width="430" height="3" fill="rgba(255,255,255,.04)"/>
+      <rect y="244" width="430" height="3" fill="rgba(255,255,255,.04)"/>
+      <rect y="430" width="430" height="190" fill="#040506"/>
+      <rect x="30" y="74" width="12" height="68" rx="3" fill="rgba(0,80,40,.28)"/>
+      <rect x="48" y="79" width="12" height="62" rx="3" fill="rgba(0,40,90,.24)"/>
+      <rect x="66" y="72" width="12" height="70" rx="3" fill="rgba(90,0,0,.22)"/>
+      <rect x="84" y="76" width="12" height="66" rx="3" fill="rgba(0,60,70,.24)"/>
+      <rect x="198" y="70" width="18" height="74" rx="4" fill="rgba(80,0,100,.32)" stroke="rgba(140,0,140,.2)" stroke-width="1"/>
+      <rect x="320" y="336" width="84" height="64" rx="3" fill="#0d1016" stroke="rgba(191,58,52,.22)" stroke-width="1"/>
+      <circle cx="362" cy="368" r="10" fill="#090b10" stroke="rgba(120,0,120,.3)" stroke-width="1"/>
+      <rect x="0" y="0" width="430" height="620" fill="url(#phGlow)"/>
+      ${G.flags.boxOpened ? `<rect x="320" y="336" width="42" height="64" fill="#0d1016" stroke="rgba(191,58,52,.22)" stroke-width="1"/><polygon points="362,336 407,352 407,392 362,400" fill="#090b11" stroke="rgba(191,58,52,.22)" stroke-width="1"/>` : ''}
+      `;
+    },
+    hotspots:[
+      hs('shelf',2,10,62,28,()=>UI.openInspect('shelf')),
+      hs('note',4,42,23,12,()=>UI.openInspect('phNote')),
+      hs('box',74,53,22,14,()=>UI.openInspect('box')),
+      hs('basementDoor',73,70,22,18,()=>UI.openInspect('basementDoor')),
+      hs('back',2,78,15,12,()=>Game.go(SC.NU)),
+    ],
+    onEnter(){
+      if(!G.flags.phFirst){
+        G.flags.phFirst=true;
+        UI.say(['薬品庫だ。','どれもラベルが剥がれ、薬品の正体がわからない。']);
+      }
+    }
+  },
+  basement:{
+    name:'地下室',
+    access:()=>!!G.flags.gotIronKey,
+    room(){
+      return `
+      <defs><radialGradient id="bsGlow" cx="50%" cy="35%" r="70%"><stop offset="0%" stop-color="rgba(90,0,0,.09)"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs>
+      <rect width="430" height="620" fill="#030304"/>
+      <line x1="0" y1="118" x2="430" y2="118" stroke="rgba(255,255,255,.07)" stroke-width="9"/>
+      <line x1="0" y1="118" x2="430" y2="118" stroke="rgba(255,255,255,.03)" stroke-width="16"/>
+      <line x1="84" y1="118" x2="84" y2="260" stroke="rgba(255,255,255,.05)" stroke-width="6"/>
+      <line x1="218" y1="118" x2="218" y2="220" stroke="rgba(255,255,255,.05)" stroke-width="6"/>
+      <line x1="336" y1="118" x2="336" y2="286" stroke="rgba(255,255,255,.05)" stroke-width="6"/>
+      <rect x="150" y="320" width="132" height="90" rx="3" fill="#09070a" stroke="rgba(90,0,0,.22)" stroke-width="1"/>
+      <rect x="166" y="302" width="100" height="24" rx="2" fill="#0d090d"/>
+      <rect x="170" y="285" width="94" height="16" rx="2" fill="#100b10" transform="rotate(-1 217 293)"/>
+      <ellipse cx="217" cy="412" rx="44" ry="14" fill="rgba(90,0,0,.36)"/>
+      <rect x="332" y="334" width="78" height="158" rx="2" fill="#070709" stroke="rgba(191,58,52,.3)" stroke-width="1.5"/>
+      <circle cx="343" cy="413" r="5" fill="rgba(191,58,52,.12)" stroke="rgba(191,58,52,.32)" stroke-width=".8"/>
+      <rect x="0" y="0" width="430" height="620" fill="url(#bsGlow)"/>
+      ${G.flags.bsSolved ? `<text x="338" y="320" fill="rgba(191,58,52,.7)" font-size="12">OPEN</text>` : ''}
+      `;
+    },
+    hotspots:[
+      hs('pipes',6,13,78,16,()=>UI.openInspect('pipes')),
+      hs('altar',34,46,34,19,()=>UI.openInspect('altar')),
+      hs('exitDoor',74,53,22,23,()=>UI.openInspect('exitDoor')),
+      hs('back',2,78,15,12,()=>Game.go(SC.PH)),
+    ],
+    onEnter(){
+      if(!G.flags.bsFirst){
+        G.flags.bsFirst=true;
+        FX.red(); FX.noise(650);
+        UI.say(['地下室へ降りた。','空気が重い。ここが最後の場所かもしれない。']);
+      }
+    }
+  }
+};
+
+function hs(id,x,y,w,h,onTap){ return {id,x,y,w,h,onTap}; }
+function has(id){ return G.items.includes(id); }
+function addFlag(name,val=true){ G.flags[name]=val; }
+function markExamined(key){ G.examined[key]=(G.examined[key]||0)+1; return G.examined[key]; }
+
+const UI = {
+  showScreen(id){ document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active')); document.getElementById(id).classList.add('active'); },
+  say(lines,cb){
+    if(!Array.isArray(lines)) lines=[lines];
+    G.msgQueue = [...lines]; G.msgIndex = 0; G.msgCb = cb || null;
+    this.typeLine(G.msgQueue[0]);
+  },
+  typeLine(text){
+    const box = document.getElementById('msgBox');
+    const body = document.getElementById('msgBody');
+    box.classList.remove('hidden'); box.classList.remove('ready');
+    body.innerHTML='';
+    clearInterval(G.typingTimer);
+    G.typing = true;
+    let i=0;
+    G.typingTimer = setInterval(()=>{
+      if(i < text.length){ body.textContent += text[i++]; }
+      else {
+        clearInterval(G.typingTimer);
+        G.typing = false;
+        body.innerHTML += '<span class="msg-cursor"></span>';
+        box.classList.add('ready');
+      }
+    }, 24);
+  },
+  advanceText(){
+    if(document.getElementById('screen-game').classList.contains('active')===false) return;
+    if(G.typing){
+      clearInterval(G.typingTimer);
+      const body = document.getElementById('msgBody');
+      body.textContent = G.msgQueue[G.msgIndex] || '';
+      body.innerHTML += '<span class="msg-cursor"></span>';
+      document.getElementById('msgBox').classList.add('ready');
+      G.typing = false;
+      return;
+    }
+    G.msgIndex++;
+    if(G.msgIndex < G.msgQueue.length){ this.typeLine(G.msgQueue[G.msgIndex]); return; }
+    document.getElementById('msgBox').classList.remove('ready');
+    document.getElementById('msgBox').classList.add('hidden');
+    document.getElementById('msgBody').textContent='';
+    if(G.msgCb){ const cb = G.msgCb; G.msgCb = null; setTimeout(cb, 220); }
+  },
+  renderScene(){
+    const scene = Scenes[G.scene];
+    document.getElementById('sceneName').textContent = scene.name;
+    document.getElementById('roomSvg').innerHTML = scene.room();
+    this.renderRoomHotspots();
+    this.renderProgress();
+    this.updateSelection();
+    this.closePanels();
+    if(G.inspect) this.closeInspect(true);
+    scene.onEnter && scene.onEnter();
+  },
+  renderRoomHotspots(){
+    const wrap = document.getElementById('roomHotspots');
+    wrap.innerHTML='';
+    const scene = Scenes[G.scene];
+    scene.hotspots.forEach(sp=>{
+      const btn = document.createElement('button');
+      btn.className='spot'+(G.hints?' hints-on':'');
+      btn.style.left=sp.x+'%'; btn.style.top=sp.y+'%'; btn.style.width=sp.w+'%'; btn.style.height=sp.h+'%';
+      btn.onclick = (e)=>{ e.stopPropagation(); sp.onTap(); };
+      wrap.appendChild(btn);
+    });
+    document.getElementById('senseBtn').classList.toggle('active', G.hints);
+  },
+  renderProgress(){
+    const done = [!!G.flags.srOpen, !!G.flags.nuSolved, !!G.flags.gotVial, !!G.flags.gotIronKey, !!G.flags.bsSolved];
+    document.getElementById('progress').innerHTML = done.map(v=>`<span class="${v?'on':''}"></span>`).join('');
+  },
+  toggleHints(){ G.hints=!G.hints; this.renderRoomHotspots(); if(G.inspect) this.renderInspect(G.inspect); },
+  toggleInventory(){
+    const p = document.getElementById('inventoryPanel');
+    document.getElementById('savePanel').classList.remove('open');
+    p.classList.toggle('open');
+    if(p.classList.contains('open')) this.renderInventory();
+  },
+  renderInventory(){
+    const grid = document.getElementById('invGrid');
+    grid.innerHTML='';
+    for(let i=0;i<8;i++){
+      const id = G.items[i];
+      const cell = document.createElement('div');
+      cell.className = 'inv-cell' + (id ? ' has' : '') + (id && G.sel===id ? ' sel' : '');
+      if(id){
+        const it = ITEM[id];
+        cell.innerHTML = `<div class="inv-icon">${it.icon}</div><div class="inv-name">${it.name}</div>`;
+        cell.onclick = ()=>{ G.sel = (G.sel===id ? null : id); this.updateSelection(); this.renderInventory(); };
+      }
+      grid.appendChild(cell);
+    }
+    const desc = document.getElementById('invDesc');
+    if(G.sel){ desc.textContent = '【選択中】' + ITEM[G.sel].desc; }
+    else desc.textContent = 'アイテムを選択すると使用状態になります。';
+  },
+  updateSelection(){
+    const ico = document.getElementById('useIco');
+    const lbl = document.getElementById('useLbl');
+    const mini = document.getElementById('selMini');
+    if(G.sel){ ico.textContent = ITEM[G.sel].icon; lbl.textContent = '使用中'; mini.textContent = ITEM[G.sel].name; }
+    else { ico.textContent='👆'; lbl.textContent='使用なし'; mini.textContent='未選択'; }
+    if(document.getElementById('inventoryPanel').classList.contains('open')) this.renderInventory();
+  },
+  clearSelection(){ G.sel = null; this.updateSelection(); },
+  toggleSave(){
+    const p = document.getElementById('savePanel');
+    document.getElementById('inventoryPanel').classList.remove('open');
+    p.classList.toggle('open');
+    if(p.classList.contains('open')){
+      const raw = localStorage.getItem('escape_hospital_real_v1');
+      document.getElementById('saveInfo').textContent = raw ? `セーブあり：${Scenes[JSON.parse(raw).scene]?.name || '?'} / ${new Date(JSON.parse(raw).t).toLocaleString('ja-JP')}` : 'セーブデータなし';
+    }
+  },
+  closePanels(){ document.getElementById('inventoryPanel').classList.remove('open'); document.getElementById('savePanel').classList.remove('open'); },
+  openMap(){
+    const list = [SC.SR,SC.CO,SC.NU,SC.PH,SC.BS];
+    document.getElementById('mapBody').innerHTML = list.map(id=>{
+      const acc = Scenes[id].access();
+      const current = G.scene===id;
+      return `<div class="map-item ${current?'current':''} ${!acc?'locked':''}" ${acc&&!current?`onclick="Game.go('${id}');UI.closeMap()"`:''}>
+        <span>${({sickroom:'🛏️',corridor:'🚶',nurse:'🏥',pharmacy:'💊',basement:'⬇️'})[id]}</span>
+        <span>${Scenes[id].name}</span>
+        <span class="map-badge">${current?'現在地':acc?'移動可能':'未開放'}</span>
+      </div>`;
+    }).join('');
+    document.getElementById('mapModal').classList.add('open');
+  },
+  closeMap(){ document.getElementById('mapModal').classList.remove('open'); },
+  openInspect(key){
+    G.inspect = key;
+    this.renderInspect(key);
+    document.getElementById('inspect').classList.add('open');
+  },
+  closeInspect(force){
+    G.inspect = null;
+    document.getElementById('inspect').classList.remove('open');
+    if(!force) document.getElementById('inspectHint').textContent = '気になる箇所を触って調べる';
+  },
+  renderInspect(key){
+    const d = Inspect[key]();
+    document.getElementById('inspectTitle').textContent = d.title;
+    document.getElementById('inspectArt').innerHTML = d.art;
+    document.getElementById('inspectHint').textContent = d.hint || '気になる箇所を触って調べる';
+    const layer = document.getElementById('inspectHotspots');
+    layer.innerHTML='';
+    (d.spots||[]).forEach(sp=>{
+      const b = document.createElement('button');
+      b.className = 'inspect-spot'+(G.hints?' hints-on':'');
+      b.style.left=sp.x+'%'; b.style.top=sp.y+'%'; b.style.width=sp.w+'%'; b.style.height=sp.h+'%';
+      b.onclick = (e)=>{ e.stopPropagation(); sp.onTap(); };
+      layer.appendChild(b);
+    });
+  },
+  toast(msg){
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(el._timer); el._timer = setTimeout(()=>el.classList.remove('show'), 1800);
+  }
+};
+
+const Inspect = {
+  bed(){
+    return {
+      title:'ベッドを調べる',
+      hint:'枕、シーツ、ベッド下を個別に調べられる。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#060810"/>
+        <rect x="34" y="202" width="324" height="190" rx="6" fill="#121726" stroke="rgba(255,255,255,.06)" stroke-width="1.2"/>
+        <rect x="52" y="220" width="286" height="100" rx="4" fill="#1a2031"/>
+        <rect x="62" y="228" width="90" height="40" rx="6" fill="#2b3143"/>
+        <path d="M70 325 Q140 318 300 334" stroke="rgba(255,255,255,.05)" stroke-width="2" fill="none"/>
+        ${G.flags.bedTaken ? `<rect x="124" y="338" width="66" height="12" fill="rgba(90,0,0,.2)"/>` : ''}
+        <rect x="65" y="392" width="262" height="18" fill="#090c14"/>
+      </svg>`,
+      spots:[
+        {x:14,y:36,w:26,h:14,onTap:()=>{ if(!G.flags.bedTaken){ G.flags.bedTaken=true; Game.addItem('bandage'); UI.say(['枕の脇に、湿った包帯が押し込まれている。']); UI.renderScene(); UI.renderInspect('bed'); } else UI.say(['もう何もない。']); }},
+        {x:18,y:46,w:60,h:15,onTap:()=>UI.say(['シーツの下に誰かがいたような凹みが残っている。'])},
+        {x:16,y:60,w:62,h:12,onTap:()=>{ const n=markExamined('bed_under'); if(n===1) UI.say(['ベッド下は暗く、ほこりだらけだ。']); else if(n===2){ FX.shadow(); UI.say(['……奥で何かが引っ込んだ気がした。']); } else UI.say(['これ以上見たくない。']); }},
+      ]
+    };
+  },
+  notice(){
+    return {
+      title:'壁の張り紙',
+      hint:'紙の内容を読む。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#0a0a10"/>
+        <rect x="94" y="112" width="240" height="338" fill="#e2ddcf" stroke="#8d8574" stroke-width="2" transform="rotate(-2 214 281)"/>
+        <line x1="132" y1="182" x2="304" y2="176" stroke="#857e72" stroke-width="3"/>
+        <line x1="132" y1="224" x2="292" y2="218" stroke="#857e72" stroke-width="3"/>
+        <line x1="132" y1="266" x2="260" y2="260" stroke="#857e72" stroke-width="3"/>
+        <text x="128" y="334" fill="#3c342d" font-size="34" font-family="monospace">2  7  →  ←  →</text>
+        <text x="128" y="388" fill="#6c655a" font-size="14">急いで書いたような跡がある</text>
+      </svg>`,
+      spots:[
+        {x:22,y:18,w:56,h:54,onTap:()=>{ if(!G.flags.memoTaken){ G.flags.memoTaken=true; Game.addItem('memo'); UI.say(['紙は剥がせる。裏にも何か書いてあるかもしれない。']); UI.closeInspect(); UI.renderScene(); } else { UI.say(['「2・7・右・左・右」……操作順のヒントか？']); } }}
+      ]
+    };
+  },
+  window(){
+    return {
+      title:'窓',
+      hint:'曇ったガラスを拭くか、外を見る。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#06080f"/>
+        <rect x="92" y="90" width="246" height="420" fill="rgba(68,94,140,.08)" stroke="rgba(255,255,255,.12)" stroke-width="2"/>
+        <line x1="215" y1="90" x2="215" y2="510" stroke="rgba(255,255,255,.08)" stroke-width="2"/>
+        <line x1="92" y1="300" x2="338" y2="300" stroke="rgba(255,255,255,.08)" stroke-width="2"/>
+        <rect x="102" y="102" width="226" height="396" fill="rgba(255,255,255,.03)"/>
+        <ellipse cx="184" cy="248" rx="66" ry="44" fill="rgba(255,255,255,.05)"/>
+        ${G.flags.windowScare ? `<circle cx="274" cy="240" r="20" fill="rgba(255,255,255,.16)"/><circle cx="274" cy="240" r="8" fill="#000"/><path d="M248 292 Q274 270 300 292" stroke="rgba(255,255,255,.16)" stroke-width="6" fill="none"/>` : ''}
+      </svg>`,
+      spots:[
+        {x:28,y:22,w:44,h:50,onTap:()=>{ if(!G.flags.windowWiped){ G.flags.windowWiped=true; UI.say(['手で曇りを拭った。','外は完全な闇だ。']); } else { const n=markExamined('window_view'); if(n>=2){ G.flags.windowScare=true; FX.red(); UI.say(['！！！','ガラスの向こうに白い顔が浮いた。','瞬きをした途端、消えた。'],()=>{ UI.renderScene(); UI.renderInspect('window'); }); } else UI.say(['自分の姿しか映らない。']); } }},
+      ]
+    };
+  },
+  locker(){
+    return {
+      title:'ロッカー',
+      hint:'鍵穴、扉、棚の中を調べる。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#07090f"/>
+        <rect x="118" y="64" width="194" height="500" fill="#0f121a" stroke="rgba(255,255,255,.08)" stroke-width="2"/>
+        ${G.flags.lockerOpened
+          ? `<rect x="118" y="64" width="96" height="500" fill="#121621" stroke="rgba(255,255,255,.08)" stroke-width="2"/><polygon points="214,64 334,114 334,540 214,564" fill="#090c12" stroke="rgba(255,255,255,.08)" stroke-width="2"/>`
+          : `<line x1="215" y1="64" x2="215" y2="564" stroke="rgba(255,255,255,.08)" stroke-width="2"/>`
+        }
+        <line x1="118" y1="228" x2="312" y2="228" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
+        <line x1="118" y1="392" x2="312" y2="392" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
+        <circle cx="196" cy="310" r="7" fill="rgba(255,255,255,.14)"/>
+        ${G.flags.gotRustyKey ? '' : G.flags.lockerOpened ? `<text x="154" y="470" font-size="40">🗝️</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:31,y:40,w:19,h:19,onTap:()=>UI.say([G.flags.lockerOpened?'上段の棚は空だ。':'上段の扉は固く閉ざされている。'])},
+        {x:39,y:45,w:14,h:13,onTap:()=>{
+          if(G.flags.lockerOpened){ UI.say(['鍵穴はすでに壊れている。']); return; }
+          if(G.sel==='wire'){ G.flags.lockerOpened=true; G.sel=null; UI.updateSelection(); FX.white(); UI.say(['ワイヤーを差し込み、内部の爪を押す。','……カチッ。','ロッカーが開いた。'],()=>{ UI.renderScene(); UI.renderInspect('locker'); }); }
+          else UI.say(['単純な錠前だ。細い金属ならこじ開けられそうだ。']);
+        }},
+        {x:31,y:64,w:28,h:19,onTap:()=>{
+          if(!G.flags.lockerOpened){ UI.say(['扉は開かない。']); return; }
+          if(!G.flags.gotRustyKey){ G.flags.gotRustyKey=true; Game.addItem('rusty_key'); UI.say(['棚の奥に錆びた鍵が残っていた。'],()=>{ UI.renderScene(); UI.renderInspect('locker'); }); }
+          else UI.say(['もう空だ。']);
+        }},
+      ]
+    };
+  },
+  door(){
+    return {
+      title:'出口の扉',
+      hint:'鍵を当ててみる。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#05060a"/>
+        <rect x="114" y="60" width="204" height="500" fill="#2b1e18" stroke="#4d352a" stroke-width="4"/>
+        <rect x="134" y="82" width="164" height="456" fill="#412920" stroke="#5e4034" stroke-width="2"/>
+        <circle cx="156" cy="320" r="8" fill="#b89252"/>
+        ${G.flags.srOpen ? `<text x="144" y="110" fill="rgba(191,58,52,.7)" font-size="14">UNLOCKED</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:25,y:12,w:50,h:76,onTap:()=>{
+          if(G.flags.srOpen){ UI.say(['扉は開いている。'],()=>{ UI.closeInspect(); Game.go(SC.CO); }); return; }
+          if(G.sel==='rusty_key'){ G.flags.srOpen=true; G.sel=null; UI.updateSelection(); FX.white(); UI.say(['錆びた鍵を差し込む。','重い音とともに、扉が開いた。'],()=>{ UI.closeInspect(); UI.renderScene(); Game.go(SC.CO); }); }
+          else UI.say(['施錠されている。どこかに鍵があるはずだ。']);
+        }}
+      ]
+    };
+  },
+  wheelchair(){
+    return {
+      title:'車椅子',
+      hint:'座面と下部を調べる。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#05070c"/>
+        <circle cx="132" cy="414" r="62" fill="none" stroke="rgba(255,255,255,.13)" stroke-width="6"/>
+        <circle cx="288" cy="442" r="34" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="5"/>
+        <rect x="138" y="206" width="104" height="120" rx="4" fill="#111621"/>
+        <rect x="242" y="230" width="16" height="126" fill="#1b2330"/>
+        <rect x="136" y="326" width="110" height="18" fill="#0d1119"/>
+        <line x1="150" y1="344" x2="118" y2="392" stroke="rgba(255,255,255,.16)" stroke-width="5"/>
+        <line x1="242" y1="344" x2="282" y2="412" stroke="rgba(255,255,255,.16)" stroke-width="5"/>
+        ${G.flags.gotFlashlight ? '' : `<text x="180" y="372" font-size="34">🔦</text>`}
+      </svg>`,
+      spots:[
+        {x:30,y:30,w:36,h:22,onTap:()=>UI.say(['座面は冷たく濡れている。ついさっきまで誰かがいたような湿り気だ。'])},
+        {x:34,y:54,w:30,h:18,onTap:()=>{ if(!G.flags.gotFlashlight){ G.flags.gotFlashlight=true; Game.addItem('flashlight'); UI.say(['座面の裏に懐中電灯が貼りついていた。'],()=>{ UI.renderScene(); UI.renderInspect('wheelchair'); }); } else { const n=markExamined('wheel_shift'); if(n>=2){ G.flags.coShadowSeen=true; FX.shadow(); UI.say(['……背後で何かが通った。'],()=>UI.renderScene()); } else UI.say(['金属がきしんだ。']); } }},
+      ]
+    };
+  },
+  panel(){
+    return {
+      title:'配電盤',
+      hint:'暗くて見えない。光を当てるか、無理に開ける。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#07080e"/>
+        <rect x="116" y="122" width="198" height="290" rx="4" fill="#0e1118" stroke="rgba(255,255,255,.08)" stroke-width="2"/>
+        <rect x="146" y="154" width="138" height="70" fill="#090b10"/>
+        <rect x="146" y="242" width="138" height="134" fill="#0a0d12"/>
+        <circle cx="168" cy="382" r="6" fill="rgba(0,120,60,.45)"/>
+        <circle cx="192" cy="382" r="6" fill="rgba(120,0,0,.45)"/>
+        ${G.flags.gotWire ? '' : `<path d="M220 216 C230 260, 250 290, 224 338" stroke="rgba(200,200,220,.3)" stroke-width="3" fill="none"/>`}
+        ${G.sel==='flashlight' ? `<circle cx="214" cy="260" r="160" fill="rgba(255,255,210,.07)"/>` : ''}
+      </svg>`,
+      spots:[
+        {x:31,y:25,w:40,h:44,onTap:()=>{
+          if(!G.sel || G.sel!=='flashlight'){ UI.say(['中が暗くて奥まで見えない。明かりが必要だ。']); return; }
+          if(!G.flags.gotWire){ G.flags.gotWire=true; G.sel=null; UI.updateSelection(); Game.addItem('wire'); UI.say(['懐中電灯で照らすと、奥に細いワイヤーが引っかかっていた。'],()=>{ UI.renderScene(); UI.renderInspect('panel'); }); }
+          else UI.say(['もう取れるものはない。']);
+        }}
+      ]
+    };
+  },
+  blood(){
+    return {
+      title:'床の血痕',
+      hint:'血の流れをたどる。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#08090c"/>
+        <path d="M50 340 Q170 310 360 278" stroke="rgba(120,0,0,.44)" stroke-width="18" fill="none" stroke-linecap="round"/>
+        <path d="M88 380 Q180 360 302 320" stroke="rgba(80,0,0,.3)" stroke-width="9" fill="none" stroke-linecap="round"/>
+      </svg>`,
+      spots:[{x:8,y:40,w:84,h:26,onTap:()=>UI.say(['血痕はナースステーションの方へ続いている。','誰かが何かを引きずった跡だ。'])}]
+    };
+  },
+  charts(){
+    return {
+      title:'散乱したカルテ',
+      hint:'束をめくって患者番号を確認する。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#0a0d14"/>
+        <rect x="76" y="248" width="274" height="82" fill="#dcd4c5" transform="rotate(-3 213 289)"/>
+        <rect x="88" y="228" width="264" height="84" fill="#ede4d5" transform="rotate(2 220 270)"/>
+        <rect x="98" y="208" width="248" height="88" fill="#f3ead9"/>
+        <text x="122" y="260" fill="#40382e" font-size="22">患者番号 0319</text>
+        <text x="122" y="294" fill="#6a6157" font-size="20">死亡確認</text>
+        ${G.flags.gotChart ? `<text x="122" y="338" fill="#7f1e1e" font-size="16">持ち出し済み</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:20,y:28,w:60,h:28,onTap:()=>{ if(!G.flags.gotChart){ G.flags.gotChart=true; Game.addItem('chart'); UI.say(['患者番号0319。これが暗証番号かもしれない。'],()=>{ UI.renderScene(); UI.renderInspect('charts'); }); } else UI.say(['番号は0319。覚えている。']); }}
+      ]
+    };
+  },
+  clock(){
+    return {
+      title:'止まった時計',
+      hint:'針の位置と裏の張り紙を見る。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#090b12"/>
+        <circle cx="215" cy="280" r="144" fill="#0b0f16" stroke="rgba(255,255,255,.1)" stroke-width="3"/>
+        <circle cx="215" cy="280" r="125" fill="#080a0f" stroke="rgba(255,255,255,.05)" stroke-width="1.5"/>
+        <line x1="215" y1="280" x2="215" y2="170" stroke="rgba(255,255,255,.24)" stroke-width="5" stroke-linecap="round"/>
+        <line x1="215" y1="280" x2="255" y2="176" stroke="rgba(255,255,255,.2)" stroke-width="4" stroke-linecap="round"/>
+        <circle cx="215" cy="280" r="9" fill="rgba(255,255,255,.2)"/>
+        <text x="208" y="178" fill="#858e9b" font-size="18">12</text>
+        <text x="308" y="288" fill="#858e9b" font-size="18">3</text>
+        <text x="212" y="388" fill="#858e9b" font-size="18">6</text>
+        <text x="118" y="288" fill="#858e9b" font-size="18">9</text>
+        ${G.flags.gotClockMemo ? `<rect x="86" y="460" width="258" height="40" fill="#ede4d4"/><text x="112" y="486" fill="#41382d" font-size="20">12時12分で止めた</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:18,y:18,w:64,h:48,onTap:()=>UI.say(['時計は12時12分で止まっている。人為的に止められたようだ。'])},
+        {x:18,y:70,w:64,h:12,onTap:()=>{ if(!G.flags.gotClockMemo){ G.flags.gotClockMemo=true; Game.addItem('clock_memo'); UI.say(['時計の裏に貼られたメモを剥がした。'],()=>{ UI.renderScene(); UI.renderInspect('clock'); }); } else UI.say(['裏のメモは持っている。']); }}
+      ]
+    };
+  },
+  keypad(){
+    return {
+      title:'暗証番号ロック',
+      hint:'カルテに書かれた番号を入力する。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#080a10"/>
+        <rect x="110" y="86" width="210" height="430" rx="8" fill="#0f1219" stroke="rgba(191,58,52,.32)" stroke-width="2"/>
+        <rect x="138" y="118" width="154" height="56" rx="4" fill="#06080d"/>
+        <g fill="#131823" stroke="rgba(255,255,255,.06)">
+          <rect x="138" y="210" width="42" height="42" rx="4"/><rect x="194" y="210" width="42" height="42" rx="4"/><rect x="250" y="210" width="42" height="42" rx="4"/>
+          <rect x="138" y="266" width="42" height="42" rx="4"/><rect x="194" y="266" width="42" height="42" rx="4"/><rect x="250" y="266" width="42" height="42" rx="4"/>
+          <rect x="138" y="322" width="42" height="42" rx="4"/><rect x="194" y="322" width="42" height="42" rx="4"/><rect x="250" y="322" width="42" height="42" rx="4"/>
+        </g>
+        <text x="170" y="154" fill="#ccd4de" font-size="26">****</text>
+        ${G.flags.nuSolved ? `<text x="158" y="440" fill="rgba(191,58,52,.75)" font-size="20">LOCK OPEN</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:24,y:14,w:52,h:64,onTap:()=>{ if(G.flags.nuSolved) UI.say(['すでに解除されている。']); else Puzzles.openKeypad(); }}
+      ]
+    };
+  },
+  phDoor(){
+    return {
+      title:'薬品庫への扉',
+      hint:'暗証番号ロックがかかっている。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#08090d"/>
+        <rect x="110" y="62" width="208" height="500" fill="#2c2b33" stroke="#44424f" stroke-width="4"/>
+        <rect x="138" y="96" width="152" height="436" fill="#393741"/>
+        <rect x="282" y="290" width="20" height="30" rx="4" fill="#11131a"/>
+        ${G.flags.nuSolved ? `<text x="148" y="130" fill="rgba(191,58,52,.75)" font-size="16">OPEN</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:24,y:10,w:52,h:80,onTap:()=>{ if(G.flags.nuSolved){ UI.say(['扉は開いている。'],()=>{ UI.closeInspect(); Game.go(SC.PH); }); } else UI.say(['ロックされたままだ。番号が必要だ。']); }}
+      ]
+    };
+  },
+  shelf(){
+    return {
+      title:'薬品棚',
+      hint:'ラベルの剥がれた瓶を一つずつ見る。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#06070a"/>
+        <rect x="46" y="116" width="338" height="320" fill="#0a0c10" stroke="rgba(255,255,255,.08)" stroke-width="2"/>
+        <line x1="46" y1="214" x2="384" y2="214" stroke="rgba(255,255,255,.06)" stroke-width="2"/>
+        <line x1="46" y1="316" x2="384" y2="316" stroke="rgba(255,255,255,.06)" stroke-width="2"/>
+        <rect x="78" y="134" width="20" height="70" rx="4" fill="rgba(0,80,40,.3)"/>
+        <rect x="112" y="140" width="20" height="64" rx="4" fill="rgba(0,60,100,.26)"/>
+        <rect x="146" y="132" width="20" height="72" rx="4" fill="rgba(90,0,0,.22)"/>
+        <rect x="180" y="138" width="20" height="66" rx="4" fill="rgba(0,80,70,.26)"/>
+        <rect x="214" y="130" width="24" height="74" rx="5" fill="rgba(90,0,120,.35)" stroke="rgba(140,0,180,.24)" stroke-width="1"/>
+        <rect x="248" y="141" width="20" height="62" rx="4" fill="rgba(50,50,0,.22)"/>
+        ${G.flags.gotVial ? '' : `<text x="214" y="256" font-size="40">🧪</text>`}
+      </svg>`,
+      spots:[
+        {x:47,y:18,w:12,h:18,onTap:()=>UI.say(['瓶のラベルは削り取られている。'])},
+        {x:39,y:14,w:26,h:30,onTap:()=>{ if(!G.flags.gotVial){ G.flags.gotVial=true; Game.addItem('vial'); UI.say(['一つだけ無記名の薬瓶が残っていた。'],()=>{ UI.renderScene(); UI.renderInspect('shelf'); }); } else UI.say(['棚はほとんど空だ。']); }}
+      ]
+    };
+  },
+  phNote(){
+    return {
+      title:'薬品庫のメモ',
+      hint:'順序の情報が書かれている。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#090909"/>
+        <rect x="84" y="130" width="260" height="300" fill="#e7decf" stroke="#857e72" stroke-width="2"/>
+        <text x="112" y="220" fill="#413a31" font-size="22">鍵 → 薬瓶 → 記録</text>
+        <text x="112" y="270" fill="#6a6157" font-size="15">封印解除の順序</text>
+        <text x="112" y="320" fill="#6a6157" font-size="15">先に差し込み、次に満たし、</text>
+        <text x="112" y="352" fill="#6a6157" font-size="15">最後に証明せよ</text>
+      </svg>`,
+      spots:[{x:18,y:20,w:64,h:48,onTap:()=>UI.say(['「鍵 → 薬瓶 → 記録」','順序のヒントだ。地下で使うのかもしれない。'])}]
+    };
+  },
+  box(){
+    return {
+      title:'隠しボックス',
+      hint:'中央のくぼみに何かを差し込めそうだ。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#05070a"/>
+        <rect x="94" y="198" width="244" height="170" rx="6" fill="#11141b" stroke="rgba(191,58,52,.18)" stroke-width="2"/>
+        <circle cx="216" cy="282" r="28" fill="#08090d" stroke="rgba(130,0,130,.3)" stroke-width="2"/>
+        ${G.flags.boxOpened ? `<polygon points="216,198 338,230 338,336 216,368" fill="#090b11" stroke="rgba(191,58,52,.2)" stroke-width="2"/>` : ''}
+        ${G.flags.gotIronKey ? '' : G.flags.boxOpened ? `<text x="192" y="434" font-size="42">🔑</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:36,y:34,w:28,h:24,onTap:()=>{
+          if(G.flags.boxOpened){
+            if(!G.flags.gotIronKey){ G.flags.gotIronKey=true; Game.addItem('iron_key'); UI.say(['ボックスの中に鉄製の鍵。地下への扉を開ける鍵だ。'],()=>{ UI.renderScene(); UI.renderInspect('box'); }); }
+            else UI.say(['中は空になった。']);
+            return;
+          }
+          if(G.sel==='vial'){ G.flags.boxOpened=true; G.sel=null; UI.updateSelection(); FX.white(); UI.say(['薬瓶をくぼみに差し込むと、内部で何かが溶けた。','ロックが外れたようだ。'],()=>{ UI.renderScene(); UI.renderInspect('box'); }); }
+          else if(G.sel==='chart'){ FX.red(); FX.shake(); UI.say(['カルテを押し込むと、赤い液体が噴き出した。','……選択を誤った。'],()=>Game.badEnd()); }
+          else UI.say(['くぼみは円筒状だ。瓶のような形が合いそうだ。']);
+        }}
+      ]
+    };
+  },
+  basementDoor(){
+    return {
+      title:'地下への鉄扉',
+      hint:'重い鍵穴がある。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#050608"/>
+        <rect x="116" y="68" width="204" height="494" fill="#161616" stroke="#343434" stroke-width="4"/>
+        <rect x="136" y="90" width="164" height="450" fill="#1e1e1e"/>
+        <circle cx="155" cy="316" r="10" fill="#9f7e48"/>
+        ${G.flags.bsDoorOpen ? `<text x="154" y="132" fill="rgba(191,58,52,.75)" font-size="16">OPEN</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:24,y:12,w:52,h:78,onTap:()=>{
+          if(G.flags.bsDoorOpen){ UI.closeInspect(); Game.go(SC.BS); return; }
+          if(G.sel==='iron_key' || G.flags.gotIronKey){ G.flags.bsDoorOpen=true; UI.say(['鉄の鍵がぴたりとはまる。','地下への扉が開いた。'],()=>{ UI.closeInspect(); UI.renderScene(); Game.go(SC.BS); }); }
+          else UI.say(['頑丈な鉄扉だ。普通の鍵では開かない。']);
+        }}
+      ]
+    };
+  },
+  pipes(){
+    return {
+      title:'古い配管',
+      hint:'耳を澄ませる。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#040404"/>
+        <line x1="24" y1="180" x2="406" y2="180" stroke="rgba(255,255,255,.08)" stroke-width="18"/>
+        <line x1="100" y1="180" x2="100" y2="410" stroke="rgba(255,255,255,.06)" stroke-width="12"/>
+        <line x1="214" y1="180" x2="214" y2="350" stroke="rgba(255,255,255,.06)" stroke-width="12"/>
+        <line x1="328" y1="180" x2="328" y2="448" stroke="rgba(255,255,255,.06)" stroke-width="12"/>
+      </svg>`,
+      spots:[{x:6,y:18,w:88,h:54,onTap:()=>{ const n=markExamined('pipes'); if(n===1) UI.say(['水ではない。何か粘ついたものが内部を流れている音だ。']); else { FX.shadow(); UI.say(['……配管の向こうで、誰かが息をした。']); } }}]
+    };
+  },
+  altar(){
+    return {
+      title:'祭壇のような台',
+      hint:'積み上げられた記録を読む。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#050405"/>
+        <rect x="122" y="258" width="186" height="164" rx="4" fill="#09070a" stroke="rgba(90,0,0,.2)" stroke-width="2"/>
+        <rect x="146" y="230" width="138" height="30" fill="#100b10"/>
+        <rect x="154" y="206" width="122" height="22" fill="#140d14" transform="rotate(-1 215 217)"/>
+        <ellipse cx="215" cy="420" rx="54" ry="14" fill="rgba(90,0,0,.35)"/>
+        <text x="144" y="336" fill="#8b8391" font-size="16">実験番号 X-19</text>
+        <text x="144" y="364" fill="#8b8391" font-size="16">成功</text>
+      </svg>`,
+      spots:[{x:25,y:24,w:50,h:52,onTap:()=>UI.say(['「実験番号X-19：成功」','その下に、封印解除の手順が書かれている形跡がある。'])}]
+    };
+  },
+  exitDoor(){
+    return {
+      title:'脱出口',
+      hint:'鍵を差し込み、封印を解く。',
+      art:`<svg viewBox="0 0 430 620" preserveAspectRatio="none">
+        <rect width="430" height="620" fill="#050507"/>
+        <rect x="116" y="72" width="206" height="492" fill="#121214" stroke="rgba(191,58,52,.32)" stroke-width="3"/>
+        <rect x="136" y="94" width="166" height="450" fill="#16161a"/>
+        <circle cx="158" cy="322" r="9" fill="#a58347"/>
+        <circle cx="196" cy="178" r="20" fill="${G.orderInput[0]==='key'?'rgba(191,58,52,.65)':'rgba(255,255,255,.06)'}" stroke="rgba(191,58,52,.25)" stroke-width="2"/>
+        <circle cx="215" cy="222" r="20" fill="${G.orderInput[1]==='vial'?'rgba(191,58,52,.65)':'rgba(255,255,255,.06)'}" stroke="rgba(191,58,52,.25)" stroke-width="2"/>
+        <circle cx="234" cy="266" r="20" fill="${G.orderInput[2]==='record'?'rgba(191,58,52,.65)':'rgba(255,255,255,.06)'}" stroke="rgba(191,58,52,.25)" stroke-width="2"/>
+        ${G.flags.bsSolved ? `<text x="152" y="128" fill="rgba(191,58,52,.8)" font-size="16">SEAL RELEASED</text>` : ''}
+      </svg>`,
+      spots:[
+        {x:24,y:12,w:52,h:78,onTap:()=>{
+          if(G.flags.bsSolved){ UI.say(['外気が流れ込んでくる。','ここを抜ければ終わりだ。'],()=>Game.goodEnd()); return; }
+          if(G.sel==='iron_key' || G.flags.gotIronKey){ Puzzles.openOrder(); } else { UI.say(['厚い封印がある。まず鍵で仕組みを起動する必要がある。']); }
+        }}
+      ]
+    };
+  },
+};
+
+const Puzzles = {
+  openKeypad(){
+    G.keypadInput = '';
+    document.getElementById('numDisplay').textContent = '----';
+    document.getElementById('keypadModal').classList.add('open');
+    const wrap = document.getElementById('numWrap');
+    wrap.innerHTML = '';
+    ['1','2','3','4','5','6','7','8','9','0','←','決定'].forEach(v=>{
+      const b = document.createElement('button');
+      b.className = 'num-btn' + ((v==='決定') ? ' wide' : '');
+      b.textContent = v;
+      b.onclick = ()=>{
+        if(v==='←'){ G.keypadInput = G.keypadInput.slice(0,-1); }
+        else if(v==='決定'){ this.confirmKeypad(); return; }
+        else if(G.keypadInput.length < 4){ G.keypadInput += v; }
+        document.getElementById('numDisplay').textContent = (G.keypadInput + '----').slice(0,4).replace(/./g,(c,i)=>G.keypadInput[i]||'-');
+      };
+      wrap.appendChild(b);
+    });
+  },
+  confirmKeypad(){
+    if(G.keypadInput === '0319'){
+      G.flags.nuSolved = true;
+      this.closeKeypad();
+      FX.white();
+      UI.say(['認証成功。','薬品庫へのロックが解除された。'],()=>{ UI.renderScene(); if(G.inspect==='keypad') UI.renderInspect('keypad'); });
+    } else {
+      FX.shake();
+      this.closeKeypad();
+      UI.say(['……違う。もう一度考えよう。']);
+    }
+  },
+  closeKeypad(){ document.getElementById('keypadModal').classList.remove('open'); },
+  openOrder(){
+    G.orderInput = [];
+    document.getElementById('orderModal').classList.add('open');
+    const row = document.getElementById('orderRow');
+    row.innerHTML='';
+    [
+      {id:'key',label:'鍵を差し込む'},
+      {id:'vial',label:'薬瓶を満たす'},
+      {id:'record',label:'記録で証明する'},
+    ].forEach(obj=>{
+      const b = document.createElement('button');
+      b.className='order-chip';
+      b.innerHTML = obj.label;
+      b.onclick=()=>{
+        if(G.orderInput.includes(obj.id)) return;
+        G.orderInput.push(obj.id);
+        b.classList.add('marked');
+        this.refreshOrderState();
+      };
+      row.appendChild(b);
+    });
+    this.refreshOrderState();
+  },
+  refreshOrderState(){
+    document.getElementById('orderState').textContent = '選択順：' + (G.orderInput.length ? G.orderInput.join(' → ') : 'なし');
+  },
+  resetOrder(){ G.orderInput=[]; Array.from(document.querySelectorAll('#orderRow .order-chip')).forEach(el=>el.classList.remove('marked')); this.refreshOrderState(); },
+  confirmOrder(){
+    const ok = G.orderInput.join(',') === 'key,vial,record';
+    if(ok){
+      G.flags.bsSolved = true;
+      this.closeOrder();
+      FX.white(); FX.shake();
+      UI.say(['封印が解かれた。','脱出口が開く。'],()=>{ UI.renderScene(); if(G.inspect==='exitDoor') UI.renderInspect('exitDoor'); });
+    } else {
+      this.closeOrder();
+      FX.red();
+      UI.say(['順序が違う。','薬品庫のメモを思い出せ。']);
+    }
+  },
+  closeOrder(){ document.getElementById('orderModal').classList.remove('open'); },
+};
+
+const FX = {
+  red(){ const el=document.getElementById('fx'); el.style.background='rgba(191,58,52,.36)'; setTimeout(()=>el.style.background='transparent',220); SND.beat(); },
+  white(){ const el=document.getElementById('fx'); el.style.background='rgba(255,255,255,.6)'; setTimeout(()=>el.style.background='transparent',180); },
+  shake(){ const root=document.getElementById('root'); root.style.animation='rootshake .35s ease'; setTimeout(()=>root.style.animation='',350); SND.beat(); },
+  shadow(){ const el=document.getElementById('fx'); el.style.background='radial-gradient(circle at 75% 32%, rgba(255,255,255,.14), transparent 6%), transparent'; setTimeout(()=>el.style.background='transparent',160); SND.creak(); },
+  noise(ms=500){
+    const c=document.getElementById('noise'),ctx=c.getContext('2d');
+    c.width=430; c.height=window.innerHeight;
+    c.style.opacity='.11';
+    const iv=setInterval(()=>{
+      const img=ctx.createImageData(c.width,c.height);
+      for(let i=0;i<img.data.length;i+=4){ const v=Math.random()>0.5?220:0; img.data[i]=img.data[i+1]=img.data[i+2]=v; img.data[i+3]=Math.random()*70; }
+      ctx.putImageData(img,0,0);
+    },40);
+    setTimeout(()=>{clearInterval(iv); c.style.opacity='0';},ms);
+  }
+};
+
+const SND = {
+  ctx:null,
+  get(){ if(!this.ctx){ try{ this.ctx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return this.ctx; },
+  beat(){ const c=this.get(); if(!c) return; const o=c.createOscillator(),g=c.createGain(); o.connect(g); g.connect(c.destination); o.type='sawtooth'; o.frequency.setValueAtTime(90,c.currentTime); o.frequency.exponentialRampToValueAtTime(28,c.currentTime+.28); g.gain.setValueAtTime(.18,c.currentTime); g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.28); o.start(); o.stop(c.currentTime+.28); },
+  creak(){ const c=this.get(); if(!c) return; const buf=c.createBuffer(1,c.sampleRate*.4,c.sampleRate),d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*Math.exp(-i/(c.sampleRate*.08)); const s=c.createBufferSource(),g=c.createGain(),f=c.createBiquadFilter(); f.type='bandpass'; f.frequency.value=620; s.buffer=buf; s.connect(f); f.connect(g); g.connect(c.destination); g.gain.value=.12; s.start(); },
+  pickup(){ const c=this.get(); if(!c) return; const o=c.createOscillator(),g=c.createGain(); o.connect(g); g.connect(c.destination); o.type='triangle'; o.frequency.setValueAtTime(540,c.currentTime); o.frequency.exponentialRampToValueAtTime(320,c.currentTime+.14); g.gain.setValueAtTime(.08,c.currentTime); g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.14); o.start(); o.stop(c.currentTime+.14); },
+};
+
+const Game = {
+  startNew(){
+    G = freshState();
+    UI.showScreen('screen-opening');
+    this.runOpening();
+    setTimeout(()=>{ if(!G.openingDone) this.skipOpening(); }, 7400);
+  },
+  runOpening(){
+    const lines = [
+      'ここは、かつて多くの患者が最後を迎えた廃病院。',
+      'あなたは軽い取材のつもりで内部へ入った。',
+      'だが気づくと、出口は閉ざされ、',
+      '建物の奥から、誰かの足音だけが聞こえていた。',
+      '脱出する方法を探せ。'
+    ];
+    const box=document.getElementById('openingBox'); box.innerHTML='';
+    lines.forEach((line,i)=>{ const d=document.createElement('div'); d.className='opening-line'; d.textContent=line; box.appendChild(d); setTimeout(()=>d.classList.add('show'), i*700+200); });
+  },
+  skipOpening(){ if(G.openingDone) return; G.openingDone=true; UI.showScreen('screen-game'); this.go(SC.SR); },
+  go(scene){ if(!Scenes[scene].access()) return; G.scene=scene; UI.renderScene(); },
+  addItem(id){ if(has(id)) return; G.items.push(id); SND.pickup(); UI.toast(`${ITEM[id].icon} ${ITEM[id].name} を入手`); UI.updateSelection(); },
+  save(){
+    const data = { scene:G.scene, items:G.items, flags:G.flags, examined:G.examined, sel:G.sel, hints:G.hints, t:Date.now() };
+    localStorage.setItem('escape_hospital_real_v1', JSON.stringify(data));
+    UI.toast('セーブしました');
+    UI.closePanels();
+  },
+  load(){
+    const raw = localStorage.getItem('escape_hospital_real_v1');
+    if(!raw){ UI.toast('セーブデータがありません'); return; }
+    try {
+      const d = JSON.parse(raw);
+      G = freshState();
+      G.scene = d.scene || SC.SR; G.items = d.items || []; G.flags = d.flags || {}; G.examined = d.examined || {}; G.sel = d.sel || null; G.hints = !!d.hints; G.openingDone = true;
+      UI.showScreen('screen-game');
+      UI.renderScene();
+      UI.toast('ロードしました');
+    } catch(e){ UI.toast('ロードに失敗しました'); }
+  },
+  goodEnd(){
+    UI.showScreen('screen-ending');
+    document.getElementById('endKicker').textContent='TRUE END';
+    document.getElementById('endTitle').textContent='脱出成功';
+    document.getElementById('endTitle').className='end-title';
+    document.getElementById('endBody').innerHTML='あなたは廃病棟から脱出した。<br><br>振り返った建物の窓には、もう何も映っていなかった。<br><br>ここで行われていたことを、あなたは二度と調べなかった。';
+  },
+  badEnd(){ UI.showScreen('screen-gameover'); },
+  toTitle(){ UI.showScreen('screen-title'); }
+};
+
+(function initTitleBlood(){
+  const wrap=document.getElementById('bloodTop');
+  [8,15,23,34,46,55,63,72,84,91].forEach(x=>{ const d=document.createElement('div'); d.className='drip'; d.style.left=x+'%'; d.style.setProperty('--h', (24+Math.random()*54)+'px'); d.style.setProperty('--d', (2+Math.random()*3)+'s'); d.style.setProperty('--delay', (Math.random()*4)+'s'); wrap.appendChild(d); });
+})();
+
+(function bindGlobal(){
+  window.addEventListener('resize', ()=>{ if(G.inspect) UI.renderInspect(G.inspect); });
+  document.getElementById('msgBody').textContent='';
+})();
+</script>
+</body>
+</html>
